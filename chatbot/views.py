@@ -1,4 +1,4 @@
-from django.shortcuts import render
+from django.shortcuts import render, redirect
 import re
 
 # Dummy tracking data
@@ -33,96 +33,126 @@ tracking_data = {
     }
 }
 
-# Greeting message
+# Bot greeting message
 greeting_message = (
     "👋 Hi! How may I assist you today? You can:\n"
     "1️⃣ Track Package\n"
     "2️⃣ Report Issue\n"
-    "3️⃣ Check Delivery Status"
+    "3️⃣ Request Refund / Return\n"
 )
 
 # Keywords
-TRACK_KEYWORDS = ['track', 'status', 'find', 'location', 'where']
-COMPLAINT_KEYWORDS = ['lost', 'late', 'longer', 'wait', 'waiting', 'delay', 'delayed', 'missing', 'stuck', 'problem']
-
+TRACK_KEYWORDS = ['track', 'status', 'find', 'location', 'where', 'whr', 'pakage', 'parcel', 'order', 'delivery']
+COMPLAINT_KEYWORDS = ['lost', 'late', 'longer', 'delay', 'delayed', 'missing', 'stuck', 'problem', 'not received', 'issue', 'complaint', 'problematic', 'problematic']
+REFUND_KEYWORDS = ['refund', 'return', 'cancel', 'don\'t want it', 'exchange', 'change', 'wrong item', 'wrong product']
+ABUSE_KEYWORDS = ['sucks', 'terrible', 'hate', 'lawsuit', 'sue', 'angry', 'worst', 'bad', 'scam', 'fraud', 'suck', 'idiot', 'stupid', 'fool', 'dumb']
 
 def chatbot_view(request):
-    response = greeting_message
+    if 'chat_history' not in request.session:
+        request.session['chat_history'] = [{'sender': 'bot', 'message': greeting_message}]
+        request.session['warnings'] = 0
+
+    chat_history = request.session['chat_history']
+    warnings = request.session.get('warnings', 0)
 
     if request.method == 'POST':
-        original_message = request.POST.get('message', '').strip()
-        user_message = original_message.lower()
+        if 'refresh' in request.POST:
+            request.session.flush()
+            return redirect('chatbot')
 
-        # 1. Greetings
-        if user_message in ['hi', 'hello', 'hey']:
-            response = greeting_message
+        if 'message' in request.POST:
+            user_message = request.POST.get('message', '').strip()
+            if user_message:
+                chat_history.append({'sender': 'user', 'message': user_message})
+                user_message_lower = user_message.lower()
 
-        # 2. Tracking-related keywords
-        elif any(keyword in user_message for keyword in TRACK_KEYWORDS):
-            response = "📦 Sure! Please provide your Tracking ID (format: IND123)."
+                bot_response = ""
 
-        # 3. Check if message matches tracking ID pattern
-        elif re.fullmatch(r'ind\d{3}', user_message):
-            tracking_id = original_message.upper()
-            package = tracking_data.get(tracking_id)
+                # Handle abusive messages
+                if any(word in user_message_lower for word in ABUSE_KEYWORDS):
+                    warnings += 1
+                    request.session['warnings'] = warnings
+                    if warnings >= 2:
+                        bot_response = "🚨 Due to repeated inappropriate language, you are being transferred to a human agent."
+                    else:
+                        bot_response = "⚠️ Please avoid using offensive language. Let's work together to resolve your issue politely."
 
-            if package:
-                # If tracking ID is valid and found
-                response = (
-                    f"🔎 Tracking ID: {tracking_id}\n"
-                    f"Item: {package['item_name']}\n"
-                    f"Order Date: {package['order_date']}\n"
-                    f"Expected Delivery: {package['expected_delivery']}\n"
-                    f"Status: {package['status']}\n"
-                    f"Current Location: {package['current_location']}\n\n"
-                    "Is there anything else I can help you with? 😊"
-                )
-            else:
-                # Tracking ID format valid, but not found
-                response = "⚠️ Please enter a valid Tracking ID (format: IND123)."
+                # Handle request for human agent
+                elif 'agent' in user_message_lower or 'human' in user_message_lower or 'representative' in user_message_lower:
+                    bot_response = "👩‍💼 Connecting you to a human agent... Please hold!"
 
-        # 4. Complaint keywords
-        elif any(word in user_message for word in COMPLAINT_KEYWORDS):
-            response = (
-                "😟 Sorry for the inconvenience.\n"
-                "Please share your Tracking ID (format: IND123).\n"
-                "Or provide Full Name, Email ID, and Delivery Address so we can assist you!"
-            )
+                # Handle refund/return/cancel
+                elif any(word in user_message_lower for word in REFUND_KEYWORDS):
+                    bot_response = (
+                        "↩️ You want a refund, return, or cancellation.\n"
+                        "Please provide your Tracking ID (format: IND123) and a brief reason.\n"
+                        "I'll assist you right away! ✅"
+                    )
 
-        # 5. Special scenarios
-        elif "delivered" in user_message and "not received" in user_message:
-            response = (
-                "🚚 Your package shows 'Delivered', but you haven't received it?\n"
-                "Please confirm your delivery address. We’ll start an investigation right away!"
-            )
+                # Handle complaints
+                elif any(word in user_message_lower for word in COMPLAINT_KEYWORDS):
+                    bot_response = (
+                        "😟 I'm sorry you're facing issues.\n"
+                        "Please share your Tracking ID if you have it (e.g., IND123).\n"
+                        "If not, provide:\n"
+                        "- Full Name\n- Email Address\n- Delivery Address\n- Item Description\n"
+                        "I'll start investigating immediately! 🚀"
+                    )
 
-        elif "no tracking number" in user_message or "don't have tracking" in user_message:
-            response = (
-                "📝 No worries! Please provide:\n"
-                "- Full Name\n"
-                "- Email Address\n"
-                "- Order Date\n"
-                "- Delivery Address\n"
-                "- Item Description\n"
-                "I'll manually find your order! 🔍"
-            )
+                # Handle track requests without ID
+                elif any(word in user_message_lower for word in TRACK_KEYWORDS) and not re.match(r'^ind\d{3}$', user_message_lower):
+                    bot_response = "📦 Sure! Please provide your Tracking ID (format: IND123) to check the package status."
 
-        elif "stuck" in user_message or "in transit" in user_message:
-            response = (
-                "⏳ Your package is 'In Transit' for a while.\n"
-                "I'll escalate to our team for faster delivery.\n"
-                "Please also share your contact number for updates."
-            )
+                # Tracking ID given
+                elif re.match(r'^ind\d{3}$', user_message_lower):
+                    tracking_id = user_message.upper()
+                    package = tracking_data.get(tracking_id)
+                    if package:
+                        bot_response = (
+                            f"🔎 Tracking ID: {tracking_id}\n"
+                            f"Item: {package['item_name']}\n"
+                            f"Order Date: {package['order_date']}\n"
+                            f"Expected Delivery: {package['expected_delivery']}\n"
+                            f"Status: {package['status']}\n"
+                            f"Current Location: {package['current_location']}\n\n"
+                            "Is there anything else I can help you with? 😊"
+                        )
+                        # Handle special case where status is delivered but user complains
+                        if package['status'] == 'Delivered':
+                            bot_response += "\n\n📦 Note: If you haven't received it, please confirm your delivery address, and I'll escalate it!"
 
-        elif "update" in user_message and "delay" in user_message:
-            response = (
-                "📢 Update: Some deliveries are delayed at the Delhi sorting center.\n"
-                "Expected delivery is delayed by 2 days.\n"
-                "Apologies for the inconvenience! 🙏"
-            )
+                    else:
+                        bot_response = (
+                            "❌ Sorry, that Tracking ID was not found.\n"
+                            "Please double-check. Tracking IDs usually look like 'IND123'."
+                        )
 
-        # 6. If the user tries to input a wrong tracking ID (wrong format, random text)
-        else:
-            response = "⚠️ Please enter a valid Tracking ID (format: IND123)."
+                # Handle repeated spamming
+                recent_user_msgs = [msg['message'].lower() for msg in chat_history if msg['sender'] == 'user'][-5:]
+                if recent_user_msgs.count(user_message_lower) >= 3:
+                    bot_response = "⚠️ Please avoid spamming the same message. I'm here to help — let's continue politely. 🙏"
 
-    return render(request, 'chatbot.html', {'response': response})
+                # Handle greetings
+                elif user_message_lower in ['hi', 'hello', 'hey', 'hola', 'bonjour']:
+                    bot_response = greeting_message
+
+                # Handle language/slang issues
+                elif re.search(r'(¿|\bé\b|\bpor\b|\bque\b|\bmerci\b)', user_message_lower):
+                    bot_response = "🌍 Currently I can assist in English only. Please rephrase your query in English."
+
+                # Fallback for unclear messages
+                if not bot_response:
+                    bot_response = (
+                        "🤔 I'm here to help with tracking, delivery updates, issues, refunds and returns.\n"
+                        "You can say things like:\n"
+                        "- 'Track my package'\n"
+                        "- 'My delivery is late'\n"
+                        "- 'Request refund'\n"
+                        "- 'Talk to agent'\n\n"
+                        "Please type your query! 🚀"
+                    )
+
+                chat_history.append({'sender': 'bot', 'message': bot_response})
+                request.session.modified = True
+
+    return render(request, 'chatbot.html', {'chat_history': chat_history})

@@ -2,63 +2,145 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Package Tracker Chatbot</title>
+    <title>Elogistics Tracking Bot</title>
+    {% load static %}
     <style>
+        /* Main Styling */
         body {
-            background-color: #1e1e1e;
-            color: #ffffff;
+            background-color: #f0f0f0;
+            color: #333;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex;
             flex-direction: column;
             align-items: center;
             padding: 20px;
+            transition: background-color 0.3s, color 0.3s;
         }
+
+        .dark-mode {
+            background-color: #1e1e1e;
+            color: #ffffff;
+        }
+
         .chat-container {
             width: 100%;
             max-width: 600px;
-            background-color: #2b2b2b;
+            background-color: #fff;
             border-radius: 10px;
             padding: 20px;
-            box-shadow: 0px 0px 15px rgba(0, 255, 255, 0.3);
+            box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.2);
+            display: flex;
+            flex-direction: column;
+            transition: background-color 0.3s;
         }
+
+        .dark-mode .chat-container {
+            background-color: #2b2b2b;
+        }
+
+        .top-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+
+        .refresh-button, .theme-toggle-button {
+            background-color: #800080;
+            color: white;
+            border: none;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            margin-left: 10px;
+            transition: background 0.3s;
+        }
+
+        .refresh-button:hover, .theme-toggle-button:hover {
+            background-color: #660066;
+        }
+
         .chat-box {
             height: 400px;
             overflow-y: auto;
             margin-bottom: 10px;
             padding: 10px;
-            background: #333;
+            background: #eee;
             border-radius: 8px;
+            display: flex;
+            flex-direction: column;
         }
-        .user-message, .bot-message {
+
+        .dark-mode .chat-box {
+            background: #333;
+        }
+
+        .message-row {
+            display: flex;
+            align-items: flex-end;
             margin: 10px 0;
+        }
+
+        .user-row {
+            justify-content: flex-end;
+        }
+
+        .bot-row {
+            justify-content: flex-start;
+        }
+
+        .chat-icon {
+            width: 30px;
+            height: 30px;
+            margin: 0 10px;
+        }
+
+        .user-message, .bot-message {
             padding: 10px;
             border-radius: 8px;
-            max-width: 80%;
+            max-width: 70%;
+            word-wrap: break-word;
         }
+
         .user-message {
-            background-color: #0078d7;
-            align-self: flex-end;
+            background-color: #a020f0;
             color: white;
-            text-align: right;
         }
+
         .bot-message {
-            background-color: #444;
-            align-self: flex-start;
+            background-color: #d8bfd8;
+            color: #333;
         }
+
+        .dark-mode .user-message {
+            background-color: #65057c;
+        }
+
+        .dark-mode .bot-message {
+            background-color: #c47bcc;
+        }
+
         form {
             display: flex;
         }
+
         input[type="text"] {
             flex-grow: 1;
             padding: 10px;
             border-radius: 8px;
-            border: none;
+            border: 1px solid #ccc;
             outline: none;
+            background-color: #fff;
+            color: #333;
+        }
+
+        .dark-mode input[type="text"] {
             background-color: #555;
             color: white;
         }
-        button {
-            background-color: #00b7c3;
+
+        button[type="submit"] {
+            background-color: #800080;
             color: white;
             border: none;
             padding: 10px 15px;
@@ -67,24 +149,126 @@
             cursor: pointer;
             transition: background 0.3s;
         }
-        button:hover {
-            background-color: #009aa6;
+
+        button[type="submit"]:hover {
+            background-color: #660066;
+        }
+
+        /* Typing Animation */
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+        }
+
+        .typing-dot {
+            height: 8px;
+            width: 8px;
+            margin: 0 2px;
+            background-color: #aaa;
+            border-radius: 50%;
+            animation: blink 1.4s infinite both;
+        }
+
+        .typing-dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .typing-dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes blink {
+            0% { opacity: .2; }
+            20% { opacity: 1; }
+            100% { opacity: .2; }
+        }
+
+        .logo-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .logo-header img {
+            width: 40px;
+            height: 40px;
         }
     </style>
 </head>
 <body>
-    <h1>📦 Package Tracker Bot</h1>
+
+    <div class="logo-header">
+        <img src="https://img.icons8.com/?size=100&id=11910&format=png&color=000000" alt="Delivery Icon">
+        <h1>Package Tracker - Customer Service Chatbot</h1>
+    </div>
+
     <div class="chat-container">
+
+        <div class="top-buttons">
+            <form method="post">
+                {% csrf_token %}
+                <input type="hidden" name="refresh" value="true">
+                <button type="submit" class="refresh-button">🔙 Back to Main Menu</button>
+            </form>
+            <button class="theme-toggle-button" onclick="toggleTheme()">🌗 Toggle Theme</button>
+        </div>
+
         <div class="chat-box" id="chatBox">
-            {% if response %}
-                <div class="bot-message">{{ response|linebreaks }}</div>
+            {% if chat_history %}
+                {% for entry in chat_history %}
+                    {% if entry.sender == 'user' %}
+                        <div class="message-row user-row">
+                            <div class="user-message">{{ entry.message|linebreaks }}</div>
+                            <img src="https://cdn-icons-png.flaticon.com/512/4140/4140037.png" alt="User" class="chat-icon">
+                        </div>
+                    {% else %}
+                        <div class="message-row bot-row">
+                            <img src="https://cdn-icons-png.flaticon.com/512/630/630426.png" alt="Bot" class="chat-icon">
+                            <div class="bot-message">{{ entry.message|linebreaks }}</div>
+                        </div>
+                    {% endif %}
+                {% endfor %}
+            {% else %}
+                <div class="message-row bot-row">
+                    <img src="https://cdn-icons-png.flaticon.com/512/630/630426.png" alt="Bot" class="chat-icon">
+                    <div class="bot-message">{{ response|linebreaks }}</div>
+                </div>
             {% endif %}
         </div>
+
         <form method="post">
             {% csrf_token %}
             <input type="text" name="message" placeholder="Type your message..." autocomplete="off" required>
             <button type="submit">Send</button>
         </form>
+
     </div>
+
+    <script>
+        const chatBox = document.getElementById('chatBox');
+        chatBox.scrollTop = chatBox.scrollHeight;
+
+        function toggleTheme() {
+            document.body.classList.toggle('dark-mode');
+        }
+
+        const form = document.querySelector('form');
+        form.addEventListener('submit', () => {
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message-row bot-row typing';
+            typingDiv.innerHTML = `
+                <img src="https://cdn-icons-png.flaticon.com/512/630/630426.png" alt="Bot" class="chat-icon">
+                <div class="typing-indicator">
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                    <div class="typing-dot"></div>
+                </div>
+            `;
+            chatBox.appendChild(typingDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        });
+    </script>
+
 </body>
 </html>
